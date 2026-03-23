@@ -1,0 +1,51 @@
+spring:
+  application:
+    name: FitMonkAI
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/fit_monk_ai
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: true
+
+  ai:
+    model:
+      chat: openai
+      embedding: openai
+
+    chat:
+      memory:
+        repository:
+          jdbc:
+            initialize-schema: always
+
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      chat:
+        options:
+          model: gpt-4o-mini
+          temperature: 0.2
+          max-completion-tokens: 800
+      embedding:
+        options:
+          model: text-embedding-3-small
+
+    vectorstore:
+      pgvector:
+        initialize-schema: true
+        dimensions: 1536
+
+server:
+  port: 8080
+
+logging:
+  level:
+    ai.fit.monk: DEBUG
+    org.springframework.ai: INFO
