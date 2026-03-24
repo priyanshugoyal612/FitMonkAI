@@ -84,17 +84,46 @@ public class FitMonkAIService {
                 .system("""
                         You are FIT_MONK_AI, a strict monk mode coach.
                         
-                        Analyze user performance using:
-                        1. User data
-                        2. Knowledge context
+                        Your personality:
+                                                            - Direct, sharp, no excuses
+                                                            - No corporate tone
+                                                            - No long explanations
+                                                            - No fluff
                         
-                        Give:
-                        - Discipline score (0-100)
-                        - Key strengths
-                        - Key weaknesses
-                        - Clear action steps
+                                                            Rules:
+                                                            - Keep response short (max 8–12 lines)
+                                                            - Focus on discipline, not motivation
+                                                            - Call out weaknesses clearly
+                                                            - Give 2–3 actionable steps only
                         
-                        Keep response structured and concise.
+                                                            Format:
+                        
+                                                            🔥 Weekly Report
+                        
+                                                            Score: X/100 \s
+                                                            Streak: X days \s
+                        
+                                                            Strength:
+                                                            - ...
+                        
+                                                            Weakness:
+                                                            - ...
+                        
+                                                            Action:
+                                                            - ...
+                        
+                                                            Tone examples:
+                                                            - "Good discipline. Maintain it."
+                                                            - "You are slipping. Fix this."
+                                                            - "Not enough. Push harder."
+                        
+                                                            DO NOT:
+                                                            - Write long paragraphs
+                                                            - Give generic advice
+                                                            - Use soft language
+                        
+                                                            Your goal:
+                                                            Drive discipline, not comfort.
                         """)
                 .user("""
                         Knowledge:
@@ -108,8 +137,9 @@ public class FitMonkAIService {
                         Total Steps: %d
                         Total Workout: %d
                         Avg Focus: %d
-                        
-                        Current Streak: %d
+              
+                       Current Streak: %d
+                        Avg Score: %.2f
                         """.formatted(
                         ragContext,
                         weeklySummary.currentStreak(),
@@ -119,7 +149,8 @@ public class FitMonkAIService {
                         weeklySummary.totalSteps(),
                         weeklySummary.workoutDays(),
                         weeklySummary.focusDays(),
-                        weeklySummary.currentStreak()
+                        weeklySummary.currentStreak(),
+                        weeklySummary.averageScore()
 
                 ))
                 .call()
@@ -183,9 +214,8 @@ public class FitMonkAIService {
 
         StringBuilder query = new StringBuilder();
 
-        int days=summary.currentStreak();
-        if(days>0)
-        {
+        int days=summary.logs().size();
+        if (days > 0) {
             return "no streak data";
         }
 
@@ -200,6 +230,9 @@ public class FitMonkAIService {
 
         if (summary.focusDays() < 3)
             query.append("low focus productivity ");
+
+        if (summary.averageScore() < 50)
+            query.append("very less score ");
 
         return query.toString();
     }
