@@ -1,9 +1,13 @@
 package ai.fit.monk.service;
 
+import ai.fit.monk.model.MonkDailyLog;
+import ai.fit.monk.model.WeeklySummary;
+import ai.fit.monk.repository.MonkDailyLogRepository;
 import ai.fit.monk.tools.MonkDatabaseTool;
 import lombok.RequiredArgsConstructor;
 
 
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -16,16 +20,18 @@ import org.springframework.util.StreamUtils;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.util.List;
 
 @Service
 @RequiredArgsConstructor
 public class FitMonkAIService {
 
-    private Logger logger= LoggerFactory.getLogger(FitMonkAIService.class);
+    private Logger logger = LoggerFactory.getLogger(FitMonkAIService.class);
 
     private final ChatClient chatClient;
     private final VectorStore vectorStore;
+    private final MonkDailyLogRepository monkDailyLogRepository;
 
     private final MonkDatabaseTool monkDatabaseTool;
 
@@ -57,5 +63,154 @@ public class FitMonkAIService {
         }
     }
 
+
+    public String getWeeklyReport(String userId) {
+        LocalDate reportEndDate = LocalDate.now();
+        LocalDate reportStartDate = reportEndDate.minusDays(6);
+
+        List<MonkDailyLog> logs = monkDailyLogRepository
+                .findByUserIdAndLogDateBetweenOrderByLogDateAsc(userId, reportStartDate, reportEndDate);
+        if (logs.isEmpty()) {
+            return
+                    "No logs found for this week.";
+        }
+
+        WeeklySummary weeklySummary = getSummary(userId, logs, reportStartDate, reportEndDate);
+
+        String ragQuery = buildRagQuery(weeklySummary);
+        String ragContext = getRagContext(ragQuery);
+
+        return chatClient.prompt()
+                .system("""
+                        You are FIT_MONK_AI, a strict monk mode coach.
+                        
+                        Analyze user performance using:
+                        1. User data
+                        2. Knowledge context
+                        
+                        Give:
+                        - Discipline score (0-100)
+                        - Key strengths
+                        - Key weaknesses
+                        - Clear action steps
+                        
+                        Keep response structured and concise.
+                        """)
+                .user("""
+                        Knowledge:
+                        %s
+                        
+                        Weekly Summary:
+                        Days: %d
+                        Total Calories: %d
+                        Total Focus Days: %d
+                        Total No of no dopamine Days: %d
+                        Total Steps: %d
+                        Total Workout: %d
+                        Avg Focus: %d
+                        
+                        Current Streak: %d
+                        """.formatted(
+                        ragContext,
+                        weeklySummary.currentStreak(),
+                        weeklySummary.totalCalories(),
+                        weeklySummary.focusDays(),
+                        weeklySummary.noDopamineDays(),
+                        weeklySummary.totalSteps(),
+                        weeklySummary.workoutDays(),
+                        weeklySummary.focusDays(),
+                        weeklySummary.currentStreak()
+
+                ))
+                .call()
+                .content();
+    }
+
+
+    private static WeeklySummary getSummary(String userId, List<MonkDailyLog> logs, LocalDate reportStartDate, LocalDate reportEndDate) {
+        int totalCalories = logs.stream()
+                .mapToInt(MonkDailyLog::getCaloriesIntake)
+                .sum();
+
+        int totalSteps = logs.stream()
+                .mapToInt(MonkDailyLog::getDailySteps)
+                .sum();
+
+        int workoutDays = (int) logs.stream()
+                .filter(MonkDailyLog::isWorkoutDone)
+                .count();
+
+        int focusDays = (int) logs.stream()
+                .filter(MonkDailyLog::isFocusHours)
+                .count();
+
+        int noDopamineDays = (int) logs.stream()
+                .filter(MonkDailyLog::isNoDopamine)
+                .count();
+
+        double averageScore = logs.stream()
+                .mapToInt(MonkDailyLog::getScore)
+                .average()
+                .orElse(0.0);
+
+        int currentStreak = logs.isEmpty()
+                ? 0
+                : logs.get(logs.size() - 1).getStreak();
+
+        List<String> notes = logs.stream()
+                .map(MonkDailyLog::getNotes)
+                .toList();
+
+        return new WeeklySummary(
+                userId,
+                reportStartDate,
+                reportEndDate,
+                logs.size(),
+                totalCalories,
+                totalSteps,
+                workoutDays,
+                focusDays,
+                noDopamineDays,
+                averageScore,
+                currentStreak,
+                notes,
+                logs,
+                ""
+        );
+    }
+
+    public String buildRagQuery(WeeklySummary summary) {
+
+        StringBuilder query = new StringBuilder();
+
+        int days=summary.currentStreak();
+        if(days>0)
+        {
+            return "no streak data";
+        }
+
+        if (summary.totalCalories()/days > 1500)
+            query.append("high calories fat gain ");
+
+        if ((double) summary.workoutDays() /days < .5)
+            query.append("lack of exercise impact ");
+
+        if (summary.totalSteps()/days < 6000)
+            query.append("low steps activity health ");
+
+        if (summary.focusDays() < 3)
+            query.append("low focus productivity ");
+
+        return query.toString();
+    }
+
+    public String getRagContext(String query) {
+
+        List<Document> docs = vectorStore.similaritySearch(query);
+
+        return docs.stream()
+                .map(Document::getText)
+                .reduce("", (a, b) -> a + "\n" + b);
+    }
 }
 

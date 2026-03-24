@@ -5,13 +5,17 @@ import ai.fit.monk.model.MonkDailyLog;
 import ai.fit.monk.repository.MonkDailyLogRepository;
 import ai.fit.monk.service.MonkTrackerService;
 import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 
 @Component
 @AllArgsConstructor
+@Slf4j
 public class MonkDatabaseTool {
+
+
 
 
     private final MonkTrackerService monkTrackerService;
@@ -23,7 +27,8 @@ public class MonkDatabaseTool {
     public MonkDailyLog saveMonkLog(@ToolParam(description = "Details of progress of daily monk mode") MonkDailyLog monkDailyLog) {
         try {
 
-            System.out.println("going to db create the ticket");
+            log.info("going to db create the log in db");
+            log.info("Incoming monkDailyLog: {}", monkDailyLog);
             return monkTrackerService.saveLog(monkDailyLog);
         } catch (Exception e) {
             e.printStackTrace();
@@ -31,8 +36,9 @@ public class MonkDatabaseTool {
         }
     }
 
-    @Tool(description = "new log infor details with old log id")
+    @Tool(description = "new log information details with old log id")
     public MonkDailyLog updateMonkLog(@ToolParam(description = "Details of progress of daily monk mode") MonkDailyLog monkDailyLog) {
+
         return monkTrackerService.updateLog(monkDailyLog);
 
     }

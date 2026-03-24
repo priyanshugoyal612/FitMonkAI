@@ -12,14 +12,16 @@ public interface MonkDailyLogRepository extends JpaRepository<MonkDailyLog, Long
 
     List<MonkDailyLog> findByUserId(String userId);
 
+    Optional<MonkDailyLog> findTopByUserIdOrderByLogDateDesc(String userId);
+
     Optional<MonkDailyLog> findFirstByUserIdAndLogDateOrderByIdAsc(String userId, LocalDate logDate);
 
     List<MonkDailyLog> findByUserIdOrderByLogDateDesc(String userId);
 
- /*   List<MonkDailyLog> findByUserIdAndDateBetween(
-            Long userId,
-            LocalDate start,
-            LocalDate end
-    );*/
+    List<MonkDailyLog> findByUserIdAndLogDateBetweenOrderByLogDateAsc(
+            String userId,
+            LocalDate startDate,
+            LocalDate endDate
+    );
 
 }

@@ -8,12 +8,16 @@ import java.time.LocalDateTime;
 
 
 @Entity
-@Table(name = "monk_daily_log")
+@Table(name = "monk_daily_log",
+        uniqueConstraints = {
+                @UniqueConstraint(columnNames = {"user_id", "log_date"})
+        })
 @Getter
 @Setter
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
+@ToString
 public class MonkDailyLog {
 
 

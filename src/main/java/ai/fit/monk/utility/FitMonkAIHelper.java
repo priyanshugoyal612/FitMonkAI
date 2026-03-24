@@ -6,7 +6,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.Assert;
 
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -48,42 +50,27 @@ public class FitMonkAIHelper {
     public int calculateStreak(String userId, LocalDate logDate) {
 
 
-        List<MonkDailyLog> logs = monkDailyLogRepository
-                .findByUserId(userId);
+        Optional<MonkDailyLog> lastLogOpt =
+                monkDailyLogRepository.findTopByUserIdOrderByLogDateDesc(userId);
 
-        if (logs.isEmpty()) return 0;
-        LocalDate today = LocalDate.now();
+        // No logs → first streak
+        if (lastLogOpt.isEmpty()) return 1;
 
-        // ✅ Unique + ignore future dates
-        Set<LocalDate> logDates = logs.stream()
-                .map(MonkDailyLog::getLogDate)
-                .filter(date -> !date.isAfter(today))
-                .collect(Collectors.toSet());
+        MonkDailyLog lastLog = lastLogOpt.get();
+        LocalDate lastDate = lastLog.getLogDate();
 
-        // ✅ Resolve anchor date
-        LocalDate anchor = (logDate != null && !logDate.isAfter(today))
-                ? logDate
-                : logDates.stream().max(LocalDate::compareTo).get();
-
-
-        int streak = 0;
-        LocalDate current = anchor;
-// ✅ If anchor not present → fallback to nearest valid past date
-        while (!logDates.contains(current) && current.isAfter(LocalDate.MIN)) {
-            current = current.minusDays(1);
+        // Same day → no change
+        if (lastDate.equals(logDate)) {
+            return lastLog.getStreak();
         }
 
-        // ❗ If still not found → no logs
-        if (!logDates.contains(current)) return 0;
-
-        // ✅ Count consecutive days
-        while (logDates.contains(current)) {
-            streak++;
-            current = current.minusDays(1);
+        // Check continuity
+        if (lastDate.plusDays(1).equals(logDate)) {
+            return lastLog.getStreak() + 1;
         }
 
-        // ✅ Ensure minimum streak = 1
-        return Math.max(streak, 1);
+        // Gap → reset
+        return 1;
     }
 
 }
