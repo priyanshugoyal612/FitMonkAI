@@ -48,4 +48,4 @@ server:
 logging:
   level:
     ai.fit.monk: DEBUG
-    org.springframework.ai: INFO
+    org.springframework.ai: DEBUG

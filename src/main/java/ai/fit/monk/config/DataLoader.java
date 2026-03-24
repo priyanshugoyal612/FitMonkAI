@@ -17,7 +17,7 @@ public class DataLoader {
         this.vectorStore = vectorStore;
     }
 
-    @PostConstruct
+    //@PostConstruct
     public void load() {
 
         List<Document> docs = List.of(
