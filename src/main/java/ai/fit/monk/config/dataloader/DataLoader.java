@@ -1,4 +1,4 @@
-package ai.fit.monk.config;
+package ai.fit.monk.config.dataloader;
 
 import java.util.List;
 

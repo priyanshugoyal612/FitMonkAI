@@ -22,6 +22,8 @@ public class MonkTrackerService {
 
     private final MonkDailyLogRepository monkDailyLogRepository;
     private final FitMonkAIHelper fitMonkAIHelper;
+    private MonkMemoryService memoryService;
+
 
 
 
@@ -32,23 +34,25 @@ public class MonkTrackerService {
         log.setId(null);
         int score = fitMonkAIHelper.calculateScore(log);
         log.setScore(score);
-        int streak = fitMonkAIHelper.calculateStreak(log.getUserId(), logDate);
+        int streak = fitMonkAIHelper.calculateStreak(log.getUser(), logDate);
         log.setStreak(streak);
 
-        return monkDailyLogRepository.save(log);
+        MonkDailyLog saved = monkDailyLogRepository.save(log);
+
+        memoryService.storeLog(saved); // 🔥 NEW
+
+        return saved;
     }
 
     @Transactional
     public MonkDailyLog updateLog(MonkDailyLog log) {
+        MonkDailyLog dbMonkLog=monkDailyLogRepository.findByUserAndLogDate(log.getUser(), log.getLogDate());
+        log.setId(dbMonkLog.getId());
         return monkDailyLogRepository.save(log);
     }
 
     public MonkDailyLog getLog(Long logId) {
         return monkDailyLogRepository.findById(logId).orElse(null);
     }
-
-
-
-
 
 }

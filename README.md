@@ -23,3 +23,6 @@ Monk Mode
  🧘
 sround yourself with winners, not losers🏆
 
+
+docker run -d --name fit-monk-postgres -e POSTGRES_DB=fit_monk_ai -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -v pgdata:/var/lib/postgresql/data -p 5432:5432 ankane/pgvector:latest
+

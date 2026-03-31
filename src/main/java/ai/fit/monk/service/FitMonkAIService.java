@@ -1,6 +1,7 @@
 package ai.fit.monk.service;
 
 import ai.fit.monk.model.MonkDailyLog;
+import ai.fit.monk.model.User;
 import ai.fit.monk.model.WeeklySummary;
 import ai.fit.monk.repository.MonkDailyLogRepository;
 import ai.fit.monk.tools.MonkDatabaseTool;
@@ -12,7 +13,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
+import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
@@ -22,6 +25,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -35,20 +39,37 @@ public class FitMonkAIService {
 
     private final MonkDatabaseTool monkDatabaseTool;
 
+    @Autowired
+    private PatternDetectionService patternService;
+    @Autowired
+    private MonkMemoryService memoryService;
+
     @Value("classpath:/fit_monk.st")
     private Resource systemPrompt;
 
-    public String getResponseFromFitMonk(String chat, String conversationId) {
+    public String getResponseFromFitMonk(String chat, User user , String conversationId ) {
 
-        List<Document> docs = vectorStore.similaritySearch(chat);
-        String context = docs.stream()
+        //List<Document> docs = vectorStore.similaritySearch(chat);
+
+        List<Document> docs = vectorStore.similaritySearch(
+                SearchRequest.builder()
+                        .query(chat)
+                        .filterExpression("userId == '" + user.getId() + "'")
+                        .topK(5)
+                        .build()
+        );
+        String context = docs.stream().limit(5)
                 .map(Document::getText)
                 .reduce("", (a, b) -> a + "\n" + b);
 
-        return this.chatClient.prompt().system(resolveSystemPrompt(context))
+        String userContext = "User Info:\n" +
+                "User Id: " + user.getUserId();
+
+        return this.chatClient.prompt()
+                .system(resolveSystemPrompt(context) + "\n" + userContext )
                 .user(chat)
                 .advisors(
-                        advisorSpec -> advisorSpec.param("conversationId", conversationId))
+                        advisorSpec -> advisorSpec.param("conversationId",conversationId))
                 .tools(monkDatabaseTool)
                 .call()
                 .content();
@@ -64,18 +85,18 @@ public class FitMonkAIService {
     }
 
 
-    public String getWeeklyReport(String userId) {
+    public String getWeeklyReport(User user) {
         LocalDate reportEndDate = LocalDate.now();
         LocalDate reportStartDate = reportEndDate.minusDays(6);
 
         List<MonkDailyLog> logs = monkDailyLogRepository
-                .findByUserIdAndLogDateBetweenOrderByLogDateAsc(userId, reportStartDate, reportEndDate);
+                .findByUserAndLogDateBetweenOrderByLogDateAsc(user, reportStartDate, reportEndDate);
         if (logs.isEmpty()) {
             return
                     "No logs found for this week.";
         }
 
-        WeeklySummary weeklySummary = getSummary(userId, logs, reportStartDate, reportEndDate);
+        WeeklySummary weeklySummary = getSummary(user, logs, reportStartDate, reportEndDate);
 
         String ragQuery = buildRagQuery(weeklySummary);
         String ragContext = getRagContext(ragQuery);
@@ -137,6 +158,7 @@ public class FitMonkAIService {
                         Total Steps: %d
                         Total Workout: %d
                         Avg Focus: %d
+                        Daily learning notes :%s
               
                        Current Streak: %d
                         Avg Score: %.2f
@@ -149,8 +171,10 @@ public class FitMonkAIService {
                         weeklySummary.totalSteps(),
                         weeklySummary.workoutDays(),
                         weeklySummary.focusDays(),
+                        weeklySummary.notes().stream().filter(java.util.Objects::nonNull).toList(),
                         weeklySummary.currentStreak(),
                         weeklySummary.averageScore()
+
 
                 ))
                 .call()
@@ -158,7 +182,7 @@ public class FitMonkAIService {
     }
 
 
-    private static WeeklySummary getSummary(String userId, List<MonkDailyLog> logs, LocalDate reportStartDate, LocalDate reportEndDate) {
+    private static WeeklySummary getSummary(User user, List<MonkDailyLog> logs, LocalDate reportStartDate, LocalDate reportEndDate) {
         int totalCalories = logs.stream()
                 .mapToInt(MonkDailyLog::getCaloriesIntake)
                 .sum();
@@ -193,7 +217,7 @@ public class FitMonkAIService {
                 .toList();
 
         return new WeeklySummary(
-                userId,
+                user.getUserId(),
                 reportStartDate,
                 reportEndDate,
                 logs.size(),
@@ -244,6 +268,37 @@ public class FitMonkAIService {
         return docs.stream()
                 .map(Document::getText)
                 .reduce("", (a, b) -> a + "\n" + b);
+    }
+
+
+    public String generatePersonalizedAdvice(User user) {
+
+        List<MonkDailyLog> logs = monkDailyLogRepository.findTop7ByUserOrderByLogDateDesc(user);
+
+        String patterns = patternService.detectPatterns(logs);
+
+        List<Document> similarFailures = memoryService.findSimilarFailures(user.getUserId());
+
+        String memoryContext = similarFailures.stream()
+                .map(Document::getText)
+                .collect(Collectors.joining("\n"));
+
+        String prompt = """
+    You are a strict Monk AI Coach.
+
+    USER HISTORY:
+    %s
+
+    PATTERNS:
+    %s
+
+    SIMILAR FAILURE CASES:
+    %s
+
+    Give precise advice for tomorrow.
+    """.formatted(logs, patterns, memoryContext);
+
+        return chatClient.prompt(prompt).call().content();
     }
 }
 

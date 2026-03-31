@@ -26,8 +26,9 @@ public class MonkDailyLog {
     private Long id;
 
 
-    @Column(name = "user_id", nullable = false, length = 80)
-    private String userId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
 
     @Column(name = "log_date", nullable = false)
     private LocalDate logDate;

@@ -1,6 +1,7 @@
 package ai.fit.monk.utility;
 
 import ai.fit.monk.model.MonkDailyLog;
+import ai.fit.monk.model.User;
 import ai.fit.monk.repository.MonkDailyLogRepository;
 import org.springframework.stereotype.Component;
 import org.springframework.util.Assert;
@@ -47,11 +48,11 @@ public class FitMonkAIHelper {
 
 
 
-    public int calculateStreak(String userId, LocalDate logDate) {
+    public int calculateStreak(User user, LocalDate logDate) {
 
 
         Optional<MonkDailyLog> lastLogOpt =
-                monkDailyLogRepository.findTopByUserIdOrderByLogDateDesc(userId);
+                monkDailyLogRepository.findTopByUserOrderByLogDateDesc(user);
 
         // No logs → first streak
         if (lastLogOpt.isEmpty()) return 1;
