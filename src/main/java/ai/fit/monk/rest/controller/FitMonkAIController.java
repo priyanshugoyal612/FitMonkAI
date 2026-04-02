@@ -39,8 +39,7 @@ public class FitMonkAIController {
 
 
     @GetMapping("/report/weekly")
-    public ResponseEntity<String> getWeeklyReport(
-            @RequestParam String userId) {
+    public ResponseEntity<String> getWeeklyReport() {
         User user = userUtilityService.getCurrentUser();
         return ResponseEntity.ok(fitMonkAIService.getWeeklyReport(user));
     }

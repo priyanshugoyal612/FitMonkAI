@@ -6,6 +6,7 @@ import ai.fit.monk.model.MonkLogResponse;
 import ai.fit.monk.model.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -20,6 +21,7 @@ public class MonkLogService {
     private final MonkTrackerService monkTrackerService;
     private final ChatClient chatClient;
 
+    @CacheEvict(value = {"dashboard", "weekly"}, key = "#user.id")
     public MonkLogResponse saveLogWithFeedback(MonkLogRequest request, User user) {
         MonkDailyLog savedLog = saveLog(request, user);
 

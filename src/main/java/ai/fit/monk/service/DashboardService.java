@@ -5,7 +5,9 @@ import ai.fit.monk.model.MonkDailyLog;
 import ai.fit.monk.model.User;
 import ai.fit.monk.model.UserDto;
 import ai.fit.monk.repository.MonkDailyLogRepository;
+
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -19,6 +21,7 @@ public class DashboardService {
 
     private final AIInsightService aiInsightService;
 
+    @Cacheable(value = "dashboard", key = "#user.id")
     public DashboardResponse getDashboard(User user) {
 
         LocalDate today = LocalDate.now();
