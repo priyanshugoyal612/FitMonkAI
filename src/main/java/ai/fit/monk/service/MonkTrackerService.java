@@ -24,6 +24,41 @@ public class MonkTrackerService {
     private final FitMonkAIHelper fitMonkAIHelper;
     private MonkMemoryService memoryService;
 
+    @Transactional
+    public MonkDailyLog saveOrUpdateLog(MonkDailyLog log) {
+
+        LocalDate logDate = log.getLogDate() != null ? log.getLogDate() : LocalDate.now();
+        log.setLogDate(logDate);
+
+        MonkDailyLog existingLog =
+                monkDailyLogRepository.findByUserAndLogDate(log.getUser(), logDate);
+
+        if (existingLog != null) {
+            // ✅ UPDATE EXISTING
+            existingLog.setCaloriesIntake(log.getCaloriesIntake());
+            existingLog.setDailySteps(log.getDailySteps());
+            existingLog.setFocusHours(log.isFocusHours());
+            existingLog.setNoDopamine(log.isNoDopamine());
+            existingLog.setWorkoutDone(log.isWorkoutDone());
+            existingLog.setNotes(log.getNotes());
+
+            log = existingLog; // IMPORTANT
+        }
+
+        // ✅ ALWAYS RECALCULATE
+        int score = fitMonkAIHelper.calculateScore(log);
+        log.setScore(score);
+
+        int streak = fitMonkAIHelper.calculateStreak(log.getUser(), logDate);
+        log.setStreak(streak);
+
+        MonkDailyLog saved = monkDailyLogRepository.save(log);
+
+        memoryService.storeLog(saved); // 🔥 AI memory
+
+        return saved;
+    }
+
 
 
 
