@@ -8,10 +8,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 
@@ -75,6 +72,5 @@ Logs:
                 .filter(line -> !line.isEmpty())
                 .collect(Collectors.toList());
     }
-
 
 }

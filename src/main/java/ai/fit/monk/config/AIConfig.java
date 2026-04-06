@@ -21,29 +21,12 @@ public class AIConfig {
 
     private Logger logger = LoggerFactory.getLogger(AIConfig.class);
 
-    /*public JdbcChatMemoryRepository jdbcChatMemoryRepository(){
-        return JdbcChatMemoryRepository.builder()
-                .jdbcTemplate().build();
-    }*/
-
-
     @Bean
     public ChatClient chatClient(ChatClient.Builder builder, JdbcChatMemoryRepository jdbcChatMemoryRepository) {
 
-
-
-        ChatMemory chatMemory = MessageWindowChatMemory.builder()
-                .chatMemoryRepository(jdbcChatMemoryRepository)
-                .maxMessages(10)
-                .build();
-
-        logger.info("ChatClient bean created");
-        logger.info("chat memory been created. {}", chatMemory.getClass().getName());
         return builder
                 .defaultSystem("Summarize the response in 400 words")
-                .defaultAdvisors(new SimpleLoggerAdvisor(),
-                        MessageChatMemoryAdvisor.builder(chatMemory).build()
-                ).build();
+                .defaultAdvisors(new SimpleLoggerAdvisor()).build();
     }
 
 
@@ -51,12 +34,10 @@ public class AIConfig {
     public UrlBasedCorsConfigurationSource corsConfigurationSource() {
 
         CorsConfiguration config = new CorsConfiguration();
-
         config.setAllowCredentials(true);
         config.setAllowedOrigins(List.of("http://localhost:5173")); // exact match
         config.setAllowedHeaders(List.of("*"));
         config.setAllowedMethods(List.of("*"));
-
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
 

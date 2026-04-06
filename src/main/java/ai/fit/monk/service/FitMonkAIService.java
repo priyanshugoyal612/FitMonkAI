@@ -6,9 +6,7 @@ import ai.fit.monk.model.WeeklySummary;
 import ai.fit.monk.repository.MonkDailyLogRepository;
 import ai.fit.monk.tools.MonkDatabaseTool;
 import lombok.RequiredArgsConstructor;
-
-
-import org.jspecify.annotations.Nullable;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -26,10 +24,12 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class FitMonkAIService {
 
     private Logger logger = LoggerFactory.getLogger(FitMonkAIService.class);
@@ -48,42 +48,73 @@ public class FitMonkAIService {
     @Value("classpath:/fit_monk.st")
     private Resource systemPrompt;
 
-    public String getResponseFromFitMonk(String chat, User user , String conversationId ) {
+    public String getResponseFromFitMonk(String chat, User user, String conversationId) {
 
-        //List<Document> docs = vectorStore.similaritySearch(chat);
+        // 🔥 1. Retrieve past logs
+       // String ragContext = getRagContext(chat, user);
 
-        List<Document> docs = vectorStore.similaritySearch(
+        // 🔥 2. Retrieve past conversations (memory)
+       /* List<Document> memoryDocs = vectorStore.similaritySearch(
                 SearchRequest.builder()
                         .query(chat)
-                        .filterExpression("userId == '" + user.getId() + "'")
-                        .topK(5)
+                        .filterExpression(
+                                "userId == '" + user.getUserId() + "' AND type == 'conversation'"
+                        )
+                        .topK(3)
                         .build()
         );
-        String context = docs.stream().limit(5)
+
+        String memoryContext = memoryDocs.stream()
                 .map(Document::getText)
-                .reduce("", (a, b) -> a + "\n" + b);
+                .collect(Collectors.joining("\n"));
 
         String userContext = "User Info:\n" +
                 "User Id: " + user.getUserId();
 
-        return this.chatClient.prompt()
-                .system(resolveSystemPrompt(context) + "\n" + userContext )
+        String behaviorContext = "User is asking: " + chat;
+
+        String systemPromptFinal = resolveSystemPrompt(
+                ragContext,
+                memoryContext,
+                behaviorContext
+        )*/;
+
+        String basePrompt="";
+
+        try {
+             basePrompt = StreamUtils.copyToString(
+                    systemPrompt.getInputStream(),
+                    StandardCharsets.UTF_8
+            );
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+        String response= this.chatClient.prompt()
+                .system(basePrompt )// + "\n" + userContext)
                 .user(chat)
-                .advisors(
-                        advisorSpec -> advisorSpec.param("conversationId",conversationId))
-                .tools(monkDatabaseTool)
+              //  .advisors(
+                //        advisorSpec -> advisorSpec.param("conversationId", conversationId))
+              //  .tools(monkDatabaseTool)
                 .call()
                 .content();
+
+        // 🔥 3. Store conversation (memory)
+        vectorStore.add(List.of(
+                new Document(
+                        "User: " + chat + "\nAI: " + response,
+                        Map.of(
+                                "userId", user.getId(),
+                                "type", "conversation",
+                                "date", LocalDate.now().toString()
+                        )
+                )
+        ));
+
+        return response;
+
     }
 
-    private String resolveSystemPrompt(String context) {
-        try {
-            String promptTemplate = StreamUtils.copyToString(systemPrompt.getInputStream(), StandardCharsets.UTF_8);
-            return promptTemplate + "\n\nContext:\n" + context;
-        } catch (IOException e) {
-            throw new IllegalStateException("Failed to load fit_monk.st prompt", e);
-        }
-    }
 
 
     @Cacheable(value = "weekly", key = "#user.id")
@@ -101,7 +132,8 @@ public class FitMonkAIService {
         WeeklySummary weeklySummary = getSummary(user, logs, reportStartDate, reportEndDate);
 
         String ragQuery = buildRagQuery(weeklySummary);
-        String ragContext = getRagContext(ragQuery);
+
+        String ragContext = getRagContext(ragQuery, user);
 
         return chatClient.prompt()
                 .system("""
@@ -149,21 +181,21 @@ public class FitMonkAIService {
                                                             Drive discipline, not comfort.
                         """)
                 .user("""
-                        Knowledge:
-                        %s
+                         Knowledge:
+                         %s
                         
-                        Weekly Summary:
-                        Days: %d
-                        Total Calories: %d
-                        Total Focus Days: %d
-                        Total No of no dopamine Days: %d
-                        Total Steps: %d
-                        Total Workout: %d
-                        Avg Focus: %d
-                        Daily learning notes :%s
-              
-                       Current Streak: %d
-                        Avg Score: %.2f
+                         Weekly Summary:
+                         Days: %d
+                         Total Calories: %d
+                         Total Focus Days: %d
+                         Total No of no dopamine Days: %d
+                         Total Steps: %d
+                         Total Workout: %d
+                         Avg Focus: %d
+                         Daily learning notes :%s
+                        
+                        Current Streak: %d
+                         Avg Score: %.2f
                         """.formatted(
                         ragContext,
                         weeklySummary.currentStreak(),
@@ -236,41 +268,54 @@ public class FitMonkAIService {
         );
     }
 
+
     public String buildRagQuery(WeeklySummary summary) {
 
-        StringBuilder query = new StringBuilder();
-
-        int days=summary.logs().size();
-        if (days > 0) {
+        int days = summary.logs().size();
+        if (days == 0) {
             return "no streak data";
         }
 
-        if (summary.totalCalories()/days > 1500)
+        StringBuilder query = new StringBuilder();
+
+        // Weakness signals
+        if (summary.totalCalories() / days > 1500)
             query.append("high calories fat gain ");
 
-        if ((double) summary.workoutDays() /days < .5)
-            query.append("lack of exercise impact ");
+        if ((double) summary.workoutDays() / days < .5)
+            query.append("lack of exercise ");
 
-        if (summary.totalSteps()/days < 6000)
-            query.append("low steps activity health ");
+        if (summary.totalSteps() / days < 6000)
+            query.append("low activity ");
 
         if (summary.focusDays() < 3)
-            query.append("low focus productivity ");
+            query.append("low focus ");
 
         if (summary.averageScore() < 50)
-            query.append("very less score ");
+            query.append("low discipline ");
 
-        return query.toString();
+        // Strength signals (VERY IMPORTANT)
+        if ((double) summary.workoutDays() / days >= .7)
+            query.append("consistent workouts ");
+
+        if (summary.totalSteps() / days >= 8000)
+            query.append("active lifestyle ");
+
+        if (summary.focusDays() >= 5)
+            query.append("high focus ");
+
+        if (summary.averageScore() >= 75)
+            query.append("high discipline ");
+
+        // Fallback
+        if (query.isEmpty()) {
+            return "balanced routine discipline";
+        }
+
+        return query.toString().trim();
     }
 
-    public String getRagContext(String query) {
 
-        List<Document> docs = vectorStore.similaritySearch(query);
-
-        return docs.stream()
-                .map(Document::getText)
-                .reduce("", (a, b) -> a + "\n" + b);
-    }
 
 
     public String generatePersonalizedAdvice(User user) {
@@ -286,21 +331,135 @@ public class FitMonkAIService {
                 .collect(Collectors.joining("\n"));
 
         String prompt = """
-    You are a strict Monk AI Coach.
-
-    USER HISTORY:
-    %s
-
-    PATTERNS:
-    %s
-
-    SIMILAR FAILURE CASES:
-    %s
-
-    Give precise advice for tomorrow.
-    """.formatted(logs, patterns, memoryContext);
+                You are a strict Monk AI Coach.
+                
+                USER HISTORY:
+                %s
+                
+                PATTERNS:
+                %s
+                
+                SIMILAR FAILURE CASES:
+                %s
+                
+                Give precise advice for tomorrow.
+                """.formatted(logs, patterns, memoryContext);
 
         return chatClient.prompt(prompt).call().content();
     }
+
+// Creating Rag Context
+    public String getRagContext(String query, User user) {
+
+        if (query == null || query.trim().isEmpty()) {
+            return ""; // or return "No past context"
+        }
+
+
+        List<Document> docs = vectorStore.similaritySearch(
+                SearchRequest.builder()
+                        .query(query)
+                        .filterExpression(
+                                "userId == '" + user.getUserId() + "'"
+                        )
+                        .topK(10)
+                        .build()
+        );
+
+        // ✅ Sort by recent date
+        docs = docs.stream()
+                .sorted((d1, d2) -> {
+
+                    String date1 = getSafeDate(d1);
+                    String date2 = getSafeDate(d2);
+
+                    return date2.compareTo(date1); // safe now
+                })
+                .limit(5)
+                .toList();
+
+        // ✅ Structured context (VERY IMPORTANT)
+        return docs.stream()
+                .map(doc -> String.format(
+                        "- [%s] Score: %s → %s",
+                        doc.getMetadata().get("date"),
+                        doc.getMetadata().get("score"),
+                        doc.getText()
+                ))
+                .collect(Collectors.joining("\n"));
+
+    }
+
+
+    //
+
+    private String resolveSystemPrompt(
+            String ragContext,
+            String memoryContext,
+            String behaviorContext
+    ) {
+        try {
+            String basePrompt = StreamUtils.copyToString(
+                    systemPrompt.getInputStream(),
+                    StandardCharsets.UTF_8
+            );
+
+            return basePrompt + """
+
+                ---------------------
+                🔍 USER HISTORY (RAG)
+                %s
+
+                ---------------------
+                🧠 MEMORY (PAST BEHAVIOR)
+                %s
+
+                ---------------------
+                📊 CURRENT ANALYSIS
+                %s
+
+                ---------------------
+                ⚠️ PRIORITY RULES
+
+                1. ALWAYS use USER HISTORY before giving advice
+                2. If repeated mistakes exist → call them out
+                3. If user is improving → acknowledge briefly
+                4. NEVER give generic advice
+                5. Use real data from context
+
+                """.formatted(
+                    safe(ragContext),
+                    safe(memoryContext),
+                    safe(behaviorContext)
+            );
+
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to load fit_monk.st prompt", e);
+        }
+    }
+
+    private String safe(String input) {
+        return (input == null || input.isBlank())
+                ? "No data available"
+                : input;
+    }
+
+
+    private String getSafeDate(Document doc) {
+
+        if (doc == null || doc.getMetadata() == null) {
+            return "0000-00-00";
+        }
+
+        Object dateObj = doc.getMetadata().get("date");
+
+        if (dateObj == null) {
+            return "0000-00-00";
+        }
+
+        return dateObj.toString();
+    }
+
+
 }
 

@@ -13,6 +13,8 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDate;
+
 @Component
 @AllArgsConstructor
 @Slf4j
@@ -60,6 +62,11 @@ public class MonkDatabaseTool {
     public String getCurrentSystemTime() {
         return String.valueOf(System.currentTimeMillis());
 
+    }
+
+    @Tool(description = "Get today's date")
+    public String getCurrentDate() {
+        return (LocalDate.now().toString());
     }
 
 }
